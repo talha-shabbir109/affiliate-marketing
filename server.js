@@ -1,5 +1,5 @@
-const express = require("express");
-const { connectDB } = require("./src/config/database");
+import express from "express";
+import { connectDB } from "./src/config/database.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,10 +17,12 @@ app.get("/", (req, res) => {
 		message: "Affiliate Marketing API - Signup Feature Branch",
 		branch: "2-featuresignup-email-password",
 		database: "Connected via Prisma",
+		module: "ES6 Modules",
 	});
 });
 
 // Server start
 app.listen(PORT, () => {
 	console.log(`🚀 Server running on: http://localhost:${PORT}`);
+	console.log(`📦 Using ES6 Modules`);
 });

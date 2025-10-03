@@ -6,3 +6,4 @@ dist/
 build/
 coverage/
 /generated/prisma
+test.sh
