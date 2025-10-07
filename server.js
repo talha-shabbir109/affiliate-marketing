@@ -30,7 +30,7 @@ app.get("/", (_req, res) => {
 	res.json({ ok: true, service: "affiliate-marketing-api" });
 });
 
-// POST /signup
+// POST /signup - FIXED VERSION
 app.post("/signup", async (req, res) => {
 	try {
 		const { email, name, password } = req.body || {};
@@ -47,8 +47,17 @@ app.post("/signup", async (req, res) => {
 				.json({ success: false, error: "email already registered" });
 
 		const hashed = await bcrypt.hash(password, 10);
+
+		// FIX: Explicitly set googleId to undefined to avoid null unique constraint
 		const user = await prisma.user.create({
-			data: { email, name, password: hashed },
+			data: {
+				email,
+				name,
+				password: hashed,
+				googleId: undefined, // This prevents null unique constraint violation
+				isVerified: false,
+				verificationToken: null,
+			},
 		});
 
 		const token = jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: "7d" });
@@ -61,10 +70,12 @@ app.post("/signup", async (req, res) => {
 				name: user.name,
 				createdAt: user.createdAt,
 				updatedAt: user.updatedAt,
+				isVerified: user.isVerified,
 			},
 			token,
 		});
 	} catch (err) {
+		console.error("Signup Error:", err);
 		res.status(500).json({ success: false, error: String(err.message || err) });
 	}
 });
@@ -85,7 +96,16 @@ app.post("/login", async (req, res) => {
 				.status(401)
 				.json({ success: false, error: "invalid credentials" });
 
-		const ok = await bcrypt.compare(password, user.password || "");
+		// Check if user has password (Google OAuth users don't have passwords)
+		if (!user.password) {
+			return res.status(401).json({
+				success: false,
+				error:
+					"This email is registered with Google OAuth. Please use Google Sign In.",
+			});
+		}
+
+		const ok = await bcrypt.compare(password, user.password);
 		if (!ok)
 			return res
 				.status(401)
