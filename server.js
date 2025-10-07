@@ -4,6 +4,8 @@ import express from "express";
 import { connectDB, prisma } from "./src/config/database.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import passport from "./src/config/passport.js";
+import session from "express-session";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +15,15 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 await connectDB();
 
 app.use(express.json());
+app.use(
+	session({
+		secret: process.env.JWT_SECRET,
+		resave: false,
+		saveUninitialized: false,
+	})
+);
+app.use(passport.initialize());
+app.use(passport.session());
 
 // health
 app.get("/", (_req, res) => {
@@ -96,6 +107,59 @@ app.post("/login", async (req, res) => {
 	} catch (err) {
 		res.status(500).json({ success: false, error: String(err.message || err) });
 	}
+});
+
+// Google OAuth Routes
+app.get(
+	"/auth/google",
+	passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+app.get(
+	"/auth/google/callback",
+	passport.authenticate("google", {
+		failureRedirect: "/login",
+		session: false,
+	}),
+	async (req, res) => {
+		try {
+			// Generate JWT token for the user
+			const token = jwt.sign({ sub: req.user.id }, JWT_SECRET, {
+				expiresIn: "7d",
+			});
+
+			// For testing - show token in response
+			res.json({
+				success: true,
+				message: "Google OAuth successful",
+				user: {
+					id: req.user.id,
+					email: req.user.email,
+					name: req.user.name,
+					avatar: req.user.avatar,
+				},
+				token,
+			});
+		} catch (error) {
+			res.status(500).json({ success: false, error: "Authentication failed" });
+		}
+	}
+);
+
+// Get Google Auth URL (for frontend)
+app.get("/auth/google/url", (req, res) => {
+	const authUrl =
+		`https://accounts.google.com/o/oauth2/v2/auth?` +
+		`client_id=${process.env.GOOGLE_CLIENT_ID}&` +
+		`redirect_uri=${encodeURIComponent(
+			"http://localhost:3000/auth/google/callback"
+		)}&` +
+		`response_type=code&` +
+		`scope=profile email&` +
+		`access_type=offline&` +
+		`prompt=consent`;
+
+	res.json({ success: true, url: authUrl });
 });
 
 app.listen(PORT, () => {
