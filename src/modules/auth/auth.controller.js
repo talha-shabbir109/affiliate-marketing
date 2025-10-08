@@ -99,7 +99,7 @@ export const googleCallbackController = asyncHandler(async (req, res) => {
 	});
 });
 
-/** ---------- GOOGLE AUTH URL ---------- */
+/** ---------- GOOGLE AUTH URL ----------- */
 export const googleAuthUrlController = asyncHandler(async (_req, res) => {
 	const url =
 		`https://accounts.google.com/o/oauth2/v2/auth?` +
