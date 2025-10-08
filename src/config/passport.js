@@ -1,3 +1,4 @@
+// src/config/passport.js
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { prisma } from "./database.js";
@@ -7,68 +8,66 @@ passport.use(
 		{
 			clientID: process.env.GOOGLE_CLIENT_ID,
 			clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-			callbackURL: "/auth/google/callback",
+			callbackURL: "/api/v1/auth/google/callback",
 		},
-		async (accessToken, refreshToken, profile, done) => {
+		async (_accessToken, _refreshToken, profile, done) => {
 			try {
-				console.log("Google Profile:", profile);
+				const email = profile.emails?.[0]?.value || null;
+				const gId = profile.id;
 
-				// Check if user already exists with Google ID
-				let user = await prisma.user.findUnique({
-					where: { googleId: profile.id },
-				});
-
-				if (user) {
-					return done(null, user);
+				if (!email) {
+					return done(new Error("Google profile has no email"), null);
 				}
 
-				// Check if user exists with email
-				user = await prisma.user.findUnique({
-					where: { email: profile.emails[0].value },
+				// 1) Try exact compound unique match (email + googleId)
+				let user = await prisma.user.findUnique({
+					where: { email_googleId: { email, googleId: gId } },
 				});
 
-				if (user) {
-					// Update existing user with Google ID
-					user = await prisma.user.update({
-						where: { email: profile.emails[0].value },
-						data: {
-							googleId: profile.id,
-							avatar: profile.photos[0].value,
-						},
-					});
-				} else {
-					// Create new user
-					user = await prisma.user.create({
-						data: {
-							googleId: profile.id,
-							email: profile.emails[0].value,
-							name: profile.displayName,
-							avatar: profile.photos[0].value,
-							isVerified: true, // Google already verified the email
-						},
-					});
+				// 2) If not found, try by email only (user may exist from email/password signup)
+				if (!user) {
+					const byEmail = await prisma.user.findUnique({ where: { email } });
+
+					if (byEmail) {
+						// Link Google account to existing user
+						user = await prisma.user.update({
+							where: { email },
+							data: {
+								googleId: gId,
+								avatar: profile.photos?.[0]?.value || null,
+								isVerified: true,
+							},
+						});
+					} else {
+						// 3) Create a new user with both email + googleId
+						user = await prisma.user.create({
+							data: {
+								email,
+								googleId: gId,
+								name: profile.displayName || "",
+								avatar: profile.photos?.[0]?.value || null,
+								isVerified: true,
+							},
+						});
+					}
 				}
 
 				return done(null, user);
-			} catch (error) {
-				console.error("Google OAuth Error:", error);
-				return done(error, null);
+			} catch (err) {
+				console.error("Google OAuth Error:", err);
+				return done(err, null);
 			}
 		}
 	)
 );
 
-// For session support
-passport.serializeUser((user, done) => {
-	done(null, user.id);
-});
-
+passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
 	try {
 		const user = await prisma.user.findUnique({ where: { id } });
 		done(null, user);
-	} catch (error) {
-		done(error, null);
+	} catch (e) {
+		done(e, null);
 	}
 });
 
